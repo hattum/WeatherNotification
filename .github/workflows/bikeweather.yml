@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  fietsweer:
+  bikeweather:
     runs-on: ubuntu-latest
 
     steps:
@@ -14,6 +14,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: pip install requests
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-      - run: python bikeweather.py
+      - name: Run bike weather
+        env:
+          KNMI_API_KEY: ${{ secrets.KNMI_OPEN_DATA_API }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python bikeweather.py
