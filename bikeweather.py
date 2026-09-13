@@ -14,40 +14,71 @@
 
 import os
 import requests
-from datetime import datetime, timedelta, timezone
+import xarray as xr
 
 
 # ==========================================
 # Configuration
 # ==========================================
 
-KNMI_API_KEY = os.environ["KNMI_API_KEY"]
-NTFY_TOPIC = os.environ["NTFY_TOPIC"]
+KNMI_API_KEY = os.environ["KNMI_OPEN_DATA_API"]
 
-KNMI_BASE_URL = "https://api.dataplatform.knmi.nl/edr/v1"
+BASE_URL = "https://api.dataplatform.knmi.nl/open-data/v1"
 
-# Your location.
-# We will replace these with your actual coordinates later.
-LATITUDE = 52.0907
-LONGITUDE = 5.1214
+DATASET = "QRF-RT-SSh"
+VERSION = "v2025"
 
 
 # ==========================================
-# KNMI API
+# KNMI API helper
 # ==========================================
 
-def get_weather_data():
-    """
-    Get weather data from the KNMI API.
-    The exact collection and parameters depend on
-    the KNMI forecast dataset we choose.
-    """
-
-    collection = "10-minute-in-situ-meteorological-observations"
+def list_latest_file():
+    """Find the most recently created QRF forecast file."""
 
     url = (
-        f"{KNMI_BASE_URL}/collections/"
-        f"{collection}"
+        f"{BASE_URL}/datasets/"
+        f"{DATASET}/versions/{VERSION}/files"
+    )
+
+    headers = {
+        "Authorization": KNMI_API_KEY
+    }
+
+    params = {
+        "maxKeys": 1,
+        "orderBy": "created",
+        "sorting": "desc",
+    }
+
+    response = requests.get(
+        url,
+        headers=headers,
+        params=params,
+        timeout=30,
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    if not data.get("files"):
+        raise RuntimeError("No QRF forecast files were found.")
+
+    filename = data["files"][0]["filename"]
+
+    print(f"Latest KNMI file: {filename}")
+
+    return filename
+
+
+def get_download_url(filename):
+    """Get a temporary download URL for a KNMI file."""
+
+    url = (
+        f"{BASE_URL}/datasets/"
+        f"{DATASET}/versions/{VERSION}/files/"
+        f"{filename}/url"
     )
 
     headers = {
@@ -57,96 +88,81 @@ def get_weather_data():
     response = requests.get(
         url,
         headers=headers,
-        timeout=30
+        timeout=30,
     )
 
     response.raise_for_status()
 
-    return response.json()
+    return response.json()["temporaryDownloadUrl"]
 
 
-# ==========================================
-# Analyze weather
-# ==========================================
+def download_file(download_url, filename):
+    """Download the NetCDF file."""
 
-def get_cycling_advice(rain_probability, precipitation):
-    """
-    Turn the weather data into a simple cycling recommendation.
-    """
+    print("Downloading forecast...")
 
-    if precipitation > 0.5:
-        return "❌ Rain expected. I would not cycle."
-
-    if rain_probability >= 60:
-        return "⚠️ There is a good chance of rain. Bring a rain jacket."
-
-    return "✅ Looks good! Perfect cycling weather."
-
-
-# ==========================================
-# Send notification
-# ==========================================
-
-def send_notification(message):
-    """
-    Send a push notification to your phone using ntfy.
-    """
-
-    url = f"https://ntfy.sh/{NTFY_TOPIC}"
-
-    response = requests.post(
-        url,
-        data=message.encode("utf-8"),
-        headers={
-            "Title": "Cycling weather 🚲",
-            "Priority": "default"
-        },
-        timeout=30
+    response = requests.get(
+        download_url,
+        timeout=120,
     )
 
     response.raise_for_status()
 
+    with open(filename, "wb") as file:
+        file.write(response.content)
+
+    print(f"Downloaded: {filename}")
+
 
 # ==========================================
-# Main program
+# Inspect forecast
+# ==========================================
+
+def inspect_forecast(filename):
+    """Print information about the NetCDF forecast."""
+
+    print("\nOpening forecast...")
+
+    dataset = xr.open_dataset(filename)
+
+    print("\n================================")
+    print("Forecast information")
+    print("================================")
+
+    print(dataset)
+
+    print("\nVariables:")
+    for variable in dataset.data_vars:
+        print(f"  - {variable}")
+
+    print("\nCoordinates:")
+    for coordinate in dataset.coords:
+        print(f"  - {coordinate}")
+
+
+# ==========================================
+# Main
 # ==========================================
 
 def main():
 
-    print("Checking the weather...")
+    print("🌦️ Starting bike weather check...")
+    print()
 
-    weather = get_weather_data()
+    filename = list_latest_file()
 
-    print("KNMI data received.")
+    download_url = get_download_url(filename)
 
-    # These values are placeholders for now.
-    # We will get the real values from the forecast data.
-    rain_probability = 20
-    precipitation = 0.0
-
-    advice = get_cycling_advice(
-        rain_probability,
-        precipitation
+    download_file(
+        download_url,
+        filename,
     )
 
-    message = f"""
-🚲 Good morning!
+    inspect_forecast(filename)
 
-Weather between 08:00 and 09:00:
-
-🌧️ Rain probability: {rain_probability}%
-💧 Expected precipitation: {precipitation} mm
-
-{advice}
-""".strip()
-
-    print(message)
-
-    send_notification(message)
-
-    print("📱 Notification sent!")
+    print("\n✅ KNMI forecast successfully downloaded!")
 
 
 if __name__ == "__main__":
     main()
-```
+
