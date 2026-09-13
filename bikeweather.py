@@ -2,7 +2,7 @@ import os
 import requests
 
 # topic = os.environ["NTFY_TOPIC"]
-topic = mytopic6723
+topic = "mytopic6723"
 
 requests.post(
     f"https://ntfy.sh/{topic}",
