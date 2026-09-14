@@ -303,12 +303,12 @@ def main():
 
     now = datetime.now(LOCAL_TIMEZONE)
 
-    if now.hour not in (7, 15):
-        print(
-            f"Current Amsterdam time is {now:%H:%M}. "
-            "Not a scheduled notification time. Exiting."
-        )
-        return
+    # if now.hour not in (7, 15):
+    #     print(
+    #         f"Current Amsterdam time is {now:%H:%M}. "
+    #         "Not a scheduled notification time. Exiting."
+    #     )
+    #     return
 
     print("Starting bike weather check...")
     print()
